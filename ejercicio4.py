@@ -1,138 +1,116 @@
 import csv
 from collections import defaultdict
-fichero = "la-liga-2025-UTC.csv"
-def cargar_Resultados(ruta_csv: str) -> list:
-    partidos = []
-    print("Carga el fichero:", ruta_csv)
 
-    with open(ruta_csv, newline='', encoding="utf-8") as f:
-        lector = csv.DictReader(f)
-        i = 0
-        for fila in lector:
-            i += 1
-            partidos.append(fila)
-
-    print("Partidos cargados:", i)
-    return partidos
+archivo_csv = "la-liga-2025-UTC.csv"
 
 
-# ---------------------------------------------------------
-# (2) Procesar estadísticas de los equipos
-# ---------------------------------------------------------
-def procesar_estadisticas(partidos):
-    equipos = defaultdict(lambda: {
-        "GF": 0, "GC": 0,
+def cargar_partidos(ruta_archivo: str) -> list:
+    lista_partidos = []
+    print("Carga el fichero:", ruta_archivo)
+
+    with open(ruta_archivo, newline='', encoding="utf-8") as fichero_csv:
+        lector_csv = csv.DictReader(fichero_csv)
+        contador = 0
+
+        for registro in lector_csv:
+            contador += 1
+            lista_partidos.append(registro)
+
+    print("Partidos cargados:", contador)
+    return lista_partidos
+
+
+def generar_estadisticas(lista_partidos):
+    datos_equipos = defaultdict(lambda: {
+        "GolesAFavor": 0,
+        "GolesEnContra": 0,
         "Puntos": 0,
-        "DG": 0,
+        "DifGoles": 0,
         "FairPlay": 0,
-        "Directos": defaultdict(lambda: {"GF": 0, "GC": 0})
+        "DueloDirecto": defaultdict(lambda: {"GF": 0, "GC": 0})
     })
 
-    for p in partidos:
+    for partido in lista_partidos:
 
-        # --- COLUMNAS ADAPTADAS A TU CSV ---
-        home = p["Home Team"]
-        away = p["Away Team"]
+        local = partido["Home Team"]
+        visitante = partido["Away Team"]
 
-        resultado = p["Result"].strip()     # Ej: "2 - 1"
-        if "-" not in resultado or resultado.strip() == "" or resultado.count("-") != 1:
-            print("Resultado no válido encontrado:", resultado)
-            continue  # saltamos este partido
+        marcador = partido["Result"].strip()
+        if "-" not in marcador or marcador.strip() == "" or marcador.count("-") != 1:
+            print("Marcador inválido encontrado:", marcador)
+            continue
 
-        gh, ga = map(int, resultado.split('-'))
+        goles_local, goles_visit = map(int, marcador.split('-'))
 
-        # ---- Goles ----
-        equipos[home]["GF"] += gh
-        equipos[home]["GC"] += ga
-        equipos[away]["GF"] += ga
-        equipos[away]["GC"] += gh
+        datos_equipos[local]["GolesAFavor"] += goles_local
+        datos_equipos[local]["GolesEnContra"] += goles_visit
 
-        equipos[home]["DG"] = equipos[home]["GF"] - equipos[home]["GC"]
-        equipos[away]["DG"] = equipos[away]["GF"] - equipos[away]["GC"]
+        datos_equipos[visitante]["GolesAFavor"] += goles_visit
+        datos_equipos[visitante]["GolesEnContra"] += goles_local
 
-        # ---- Puntos ----
-        if gh > ga:
-            equipos[home]["Puntos"] += 3
-        elif ga > gh:
-            equipos[away]["Puntos"] += 3
+        datos_equipos[local]["DifGoles"] = datos_equipos[local]["GolesAFavor"] - datos_equipos[local]["GolesEnContra"]
+        datos_equipos[visitante]["DifGoles"] = datos_equipos[visitante]["GolesAFavor"] - datos_equipos[visitante]["GolesEnContra"]
+
+        if goles_local > goles_visit:
+            datos_equipos[local]["Puntos"] += 3
+        elif goles_visit > goles_local:
+            datos_equipos[visitante]["Puntos"] += 3
         else:
-            equipos[home]["Puntos"] += 1
-            equipos[away]["Puntos"] += 1
+            datos_equipos[local]["Puntos"] += 1
+            datos_equipos[visitante]["Puntos"] += 1
 
-        # ⚠️ SIN TARJETAS → Fair Play queda en 0
+        datos_equipos[local]["DueloDirecto"][visitante]["GF"] += goles_local
+        datos_equipos[local]["DueloDirecto"][visitante]["GC"] += goles_visit
 
-        # ---- Enfrentamientos directos ----
-        equipos[home]["Directos"][away]["GF"] += gh
-        equipos[home]["Directos"][away]["GC"] += ga
+        datos_equipos[visitante]["DueloDirecto"][local]["GF"] += goles_visit
+        datos_equipos[visitante]["DueloDirecto"][local]["GC"] += goles_local
 
-        equipos[away]["Directos"][home]["GF"] += ga
-        equipos[away]["Directos"][home]["GC"] += gh
-
-    return equipos
+    return datos_equipos
 
 
+def criterio_desempate(eq1, eq2, datos_equipos):
+    if eq2 in datos_equipos[eq1]["DueloDirecto"]:
+        d1 = datos_equipos[eq1]["DueloDirecto"][eq2]["GF"] - datos_equipos[eq1]["DueloDirecto"][eq2]["GC"]
+        d2 = datos_equipos[eq2]["DueloDirecto"][eq1]["GF"] - datos_equipos[eq2]["DueloDirecto"][eq1]["GC"]
 
-# ---------------------------------------------------------
-# (3) Criterios de desempate EXACTOS DEL ENUNCIADO
-# ---------------------------------------------------------
-def comparar(e1, e2, equipos):
-    # 1. Enfrentamientos directos (DG)
-    if e2 in equipos[e1]["Directos"]:
-        dg1 = equipos[e1]["Directos"][e2]["GF"] - equipos[e1]["Directos"][e2]["GC"]
-        dg2 = equipos[e2]["Directos"][e1]["GF"] - equipos[e2]["Directos"][e1]["GC"]
-        if dg1 != dg2:
-            return dg2 - dg1  # mayor primero
+        if d1 != d2:
+            return d2 - d1
 
-    # 2. Diferencia de goles general
-    if equipos[e1]["DG"] != equipos[e2]["DG"]:
-        return equipos[e2]["DG"] - equipos[e1]["DG"]
+    if datos_equipos[eq1]["DifGoles"] != datos_equipos[eq2]["DifGoles"]:
+        return datos_equipos[eq2]["DifGoles"] - datos_equipos[eq1]["DifGoles"]
 
-    # 3. Más goles marcados
-    if equipos[e1]["GF"] != equipos[e2]["GF"]:
-        return equipos[e2]["GF"] - equipos[e1]["GF"]
+    if datos_equipos[eq1]["GolesAFavor"] != datos_equipos[eq2]["GolesAFavor"]:
+        return datos_equipos[eq2]["GolesAFavor"] - datos_equipos[eq1]["GolesAFavor"]
 
-    # 4. Fair Play (menos puntos es mejor)
-    return equipos[e1]["FairPlay"] - equipos[e2]["FairPlay"]
+    return datos_equipos[eq1]["FairPlay"] - datos_equipos[eq2]["FairPlay"]
 
 
-# ---------------------------------------------------------
-# (4) Mostrar clasificación
-# ---------------------------------------------------------
-def mostrar_clasificacion(equipos):
+def mostrar_tabla(datos_equipos):
     from functools import cmp_to_key
 
-    lista = list(equipos.keys())
+    equipos_lista = list(datos_equipos.keys())
 
-    # Primero ordenar por puntos
-    lista.sort(key=lambda e: -equipos[e]["Puntos"])
-
-    # Luego aplicar criterios avanzados
-    lista.sort(key=cmp_to_key(lambda a, b: comparar(a, b, equipos)))
+    equipos_lista.sort(key=lambda eq: -datos_equipos[eq]["Puntos"])
+    equipos_lista.sort(key=cmp_to_key(lambda a, b: criterio_desempate(a, b, datos_equipos)))
 
     print("\n=== CLASIFICACIÓN FINAL ===")
-    for pos, equipo in enumerate(lista, 1):
-        e = equipos[equipo]
-        print(f"{pos}. {equipo} - {e['Puntos']} pts | DG: {e['DG']} | GF: {e['GF']} | FP: {e['FairPlay']}")
+    for posicion, nombre in enumerate(equipos_lista, 1):
+        est = datos_equipos[nombre]
+        print(f"{posicion}. {nombre} - {est['Puntos']} pts | DG: {est['DifGoles']} | GF: {est['GolesAFavor']} | FP: {est['FairPlay']}")
 
 
-# ---------------------------------------------------------
-# (5) Mostrar goles (apartado a)
-# ---------------------------------------------------------
-def imprimir_goles(equipos):
+def listar_goles(datos_equipos):
     print("\n=== GOLES A FAVOR POR EQUIPO ===")
-    for k, v in equipos.items():
-        print(f"{k}: {v['GF']} goles")
+    for equipo, info in datos_equipos.items():
+        print(f"{equipo}: {info['GolesAFavor']} goles")
 
 
-# ---------------------------------------------------------
-# (6) MAIN
-# ---------------------------------------------------------
 def main():
-    partidos = cargar_Resultados(fichero)
-    equipos = procesar_estadisticas(partidos)
+    lista_partidos = cargar_partidos(archivo_csv)
+    datos_equipos = generar_estadisticas(lista_partidos)
 
-    imprimir_goles(equipos)
-    mostrar_clasificacion(equipos)
+    listar_goles(datos_equipos)
+    mostrar_tabla(datos_equipos)
 
 
 if __name__ == "__main__":
